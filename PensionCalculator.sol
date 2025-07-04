@@ -6,6 +6,59 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
+ * @title AggregatorV3Interface
+ * @dev Chainlink price feed interface
+ */
+interface AggregatorV3Interface {
+    function decimals() external view returns (uint8);
+    function description() external view returns (string memory);
+    function version() external view returns (uint256);
+    function getRoundData(uint80 _roundId) external view returns (
+        uint80 roundId,
+        int256 answer,
+        uint256 startedAt,
+        uint256 updatedAt,
+        uint80 answeredInRound
+    );
+    function latestRoundData() external view returns (
+        uint80 roundId,
+        int256 answer,
+        uint256 startedAt,
+        uint256 updatedAt,
+        uint80 answeredInRound
+    );
+}
+
+/**
+ * @title IPendleYieldToken
+ * @dev Interface for Pendle Finance yield-bearing tokens
+ */
+interface IPendleYieldToken {
+    function exchangeRate() external view returns (uint256);
+    function underlyingAsset() external view returns (address);
+    function expiry() external view returns (uint256);
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+}
+
+/**
+ * @title IPendleMarket
+ * @dev Interface for Pendle Finance markets
+ */
+interface IPendleMarket {
+    function getPt() external view returns (address);
+    function getYt() external view returns (address);
+    function getSy() external view returns (address);
+    function getRewardTokens() external view returns (address[] memory);
+    function getMarketState() external view returns (
+        uint256 totalPt,
+        uint256 totalYt,
+        uint256 totalSy,
+        uint256 totalRewardTokens
+    );
+}
+
+/**
  * @title PensionCalculator
  * @dev Smart contract for calculating required investment amount for pension planning
  * using Pendle Finance yield-bearing instruments with automatic monthly payments
@@ -16,7 +69,7 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
     // Struct to store pension plan parameters
     struct PensionPlan {
         uint256 lifeExpectancyYears;     // Life expectancy after retirement in years
-        uint256 monthlySpending;         // Required monthly spending in wei
+        uint256 monthlySpendingUSD;      // Required monthly spending in USD (scaled by 10^8)
         uint256 retirementAge;           // Age at retirement
         uint256 currentAge;              // Current age
         uint256 expectedYieldRate;       // Expected annual yield rate (in basis points, e.g., 500 = 5%)
@@ -26,12 +79,12 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
 
     // Struct to track user savings and payment status
     struct UserSavings {
-        uint256 totalDeposited;          // Total amount deposited by user
-        uint256 targetAmount;            // Target amount needed for retirement
+        uint256 totalDeposited;          // Total amount deposited by user (in wei)
+        uint256 targetAmount;            // Target amount needed for retirement (in wei)
         bool paymentsStarted;            // Whether monthly payments have started
         uint256 lastPaymentTime;         // Timestamp of last payment
         uint256 paymentsRemaining;       // Number of payments remaining
-        uint256 totalPaidOut;            // Total amount paid out so far
+        uint256 totalPaidOut;            // Total amount paid out so far (in wei)
     }
 
     // Mapping from user address to their pension plan
@@ -43,6 +96,17 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
     // Mapping to store historical yield rates from Pendle Finance
     mapping(uint256 => uint256) public historicalYields; // timestamp => yield rate
     
+    // Pendle Finance integration
+    mapping(address => bool) public supportedPendleTokens; // Supported Pendle yield tokens
+    address[] public pendleTokens; // Array of supported Pendle tokens
+    
+    // Chainlink price feed integration
+    AggregatorV3Interface public ethUsdPriceFeed;
+    uint256 public lastPriceUpdateBlock;
+    uint256 public constant PRICE_UPDATE_INTERVAL = 7200; // Update every 7200 blocks (~1 day)
+    uint256 public constant USD_SCALE = 1e8; // Scale for USD values (8 decimals)
+    uint256 public constant ETH_DECIMALS = 18; // ETH has 18 decimals
+    
     // Events
     event PensionPlanCreated(address indexed user, uint256 requiredInvestment);
     event PensionPlanUpdated(address indexed user, uint256 newRequiredInvestment);
@@ -51,6 +115,9 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
     event TargetReached(address indexed user, uint256 targetAmount);
     event MonthlyPaymentSent(address indexed user, uint256 amount, uint256 paymentsRemaining);
     event PaymentsCompleted(address indexed user, uint256 totalPaidOut);
+    event PendleTokenAdded(address indexed token);
+    event PendleTokenRemoved(address indexed token);
+    event PriceFeedUpdated(uint256 blockNumber, uint256 ethPriceUSD);
     
     // Constants
     uint256 public constant BASIS_POINTS = 10000; // 100% = 10000 basis points
@@ -66,15 +133,179 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
     uint256 public totalFundsUnderManagement;
     uint256 public totalPaymentsProcessed;
     
-    constructor() {
+    constructor(address _ethUsdPriceFeed) {
+        require(_ethUsdPriceFeed != address(0), "Invalid price feed address");
+        ethUsdPriceFeed = AggregatorV3Interface(_ethUsdPriceFeed);
+        lastPriceUpdateBlock = block.number;
+        
         // Initialize with current timestamp
         historicalYields[block.timestamp] = defaultYieldRate;
     }
 
     /**
-     * @dev Calculate the required investment amount for a pension plan
+     * @dev Get current ETH/USD price from Chainlink
+     * @return price ETH price in USD (scaled by 10^8)
+     */
+    function getEthUsdPrice() public view returns (uint256 price) {
+        (, int256 answer, , uint256 updatedAt, ) = ethUsdPriceFeed.latestRoundData();
+        require(answer > 0, "Invalid price feed answer");
+        require(updatedAt > 0, "Price feed not updated");
+        
+        // Convert to uint256 and scale appropriately
+        price = uint256(answer);
+    }
+
+    /**
+     * @dev Convert USD amount to wei
+     * @param usdAmount Amount in USD (scaled by 10^8)
+     * @return weiAmount Amount in wei
+     */
+    function usdToWei(uint256 usdAmount) public view returns (uint256 weiAmount) {
+        uint256 ethPrice = getEthUsdPrice();
+        // usdAmount is scaled by 10^8, ethPrice is also scaled by 10^8
+        // We need to convert to wei (18 decimals)
+        weiAmount = usdAmount.mul(10**ETH_DECIMALS).div(ethPrice);
+    }
+
+    /**
+     * @dev Convert wei amount to USD
+     * @param weiAmount Amount in wei
+     * @return usdAmount Amount in USD (scaled by 10^8)
+     */
+    function weiToUsd(uint256 weiAmount) public view returns (uint256 usdAmount) {
+        uint256 ethPrice = getEthUsdPrice();
+        // Convert wei to USD (scaled by 10^8)
+        usdAmount = weiAmount.mul(ethPrice).div(10**ETH_DECIMALS);
+    }
+
+    /**
+     * @dev Update price feed if enough blocks have passed
+     */
+    function updatePriceFeed() public {
+        require(
+            block.number >= lastPriceUpdateBlock.add(PRICE_UPDATE_INTERVAL),
+            "Too early to update price feed"
+        );
+        
+        uint256 ethPrice = getEthUsdPrice();
+        lastPriceUpdateBlock = block.number;
+        
+        emit PriceFeedUpdated(block.number, ethPrice);
+    }
+
+    /**
+     * @dev Add a supported Pendle Finance yield token
+     * @param token Address of the Pendle yield token
+     */
+    function addPendleToken(address token) external onlyOwner {
+        require(token != address(0), "Invalid token address");
+        require(!supportedPendleTokens[token], "Token already supported");
+        
+        supportedPendleTokens[token] = true;
+        pendleTokens.push(token);
+        
+        emit PendleTokenAdded(token);
+    }
+
+    /**
+     * @dev Remove a supported Pendle Finance yield token
+     * @param token Address of the Pendle yield token
+     */
+    function removePendleToken(address token) external onlyOwner {
+        require(supportedPendleTokens[token], "Token not supported");
+        
+        supportedPendleTokens[token] = false;
+        
+        // Remove from array
+        for (uint256 i = 0; i < pendleTokens.length; i++) {
+            if (pendleTokens[i] == token) {
+                pendleTokens[i] = pendleTokens[pendleTokens.length - 1];
+                pendleTokens.pop();
+                break;
+            }
+        }
+        
+        emit PendleTokenRemoved(token);
+    }
+
+    /**
+     * @dev Get yield rate from a specific Pendle yield token
+     * @param token Address of the Pendle yield token
+     * @return yieldRate Annual yield rate in basis points
+     */
+    function getPendleYieldRate(address token) public view returns (uint256 yieldRate) {
+        require(supportedPendleTokens[token], "Token not supported");
+        
+        try IPendleYieldToken(token).exchangeRate() returns (uint256 exchangeRate) {
+            // Calculate annual yield rate from exchange rate
+            // This is a simplified calculation - in practice, you'd need more complex logic
+            // based on Pendle's specific yield calculation methods
+            
+            if (exchangeRate > BASIS_POINTS) {
+                // Calculate yield as percentage increase
+                yieldRate = exchangeRate.sub(BASIS_POINTS);
+            } else {
+                yieldRate = 0;
+            }
+        } catch {
+            // If call fails, return default rate
+            yieldRate = defaultYieldRate;
+        }
+    }
+
+    /**
+     * @dev Get the latest yield rate from Pendle Finance
+     * @return yieldRate The latest yield rate in basis points
+     */
+    function getLatestYieldRate() external view returns (uint256 yieldRate) {
+        if (pendleTokens.length == 0) {
+            return defaultYieldRate;
+        }
+        
+        uint256 totalYield = 0;
+        uint256 validTokens = 0;
+        
+        // Calculate average yield rate from all supported tokens
+        for (uint256 i = 0; i < pendleTokens.length; i++) {
+            address token = pendleTokens[i];
+            if (supportedPendleTokens[token]) {
+                uint256 tokenYield = getPendleYieldRate(token);
+                if (tokenYield > 0) {
+                    totalYield = totalYield.add(tokenYield);
+                    validTokens = validTokens.add(1);
+                }
+            }
+        }
+        
+        if (validTokens > 0) {
+            yieldRate = totalYield.div(validTokens);
+        } else {
+            yieldRate = defaultYieldRate;
+        }
+        
+        // Store in historical data
+        historicalYields[block.timestamp] = yieldRate;
+    }
+
+    /**
+     * @dev Get yield rates from all supported Pendle tokens
+     * @return tokens Array of token addresses
+     * @return rates Array of corresponding yield rates
+     */
+    function getAllPendleYieldRates() external view returns (address[] memory tokens, uint256[] memory rates) {
+        tokens = new address[](pendleTokens.length);
+        rates = new uint256[](pendleTokens.length);
+        
+        for (uint256 i = 0; i < pendleTokens.length; i++) {
+            tokens[i] = pendleTokens[i];
+            rates[i] = getPendleYieldRate(pendleTokens[i]);
+        }
+    }
+
+    /**
+     * @dev Calculate the required investment amount for a pension plan (USD input)
      * @param lifeExpectancyYears Life expectancy after retirement in years
-     * @param monthlySpending Required monthly spending in wei
+     * @param monthlySpendingUSD Required monthly spending in USD (scaled by 10^8)
      * @param retirementAge Age at retirement
      * @param currentAge Current age
      * @param yieldRate Expected annual yield rate (in basis points)
@@ -83,54 +314,61 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
      */
     function calculateRequiredInvestment(
         uint256 lifeExpectancyYears,
-        uint256 monthlySpending,
+        uint256 monthlySpendingUSD,
         uint256 retirementAge,
         uint256 currentAge,
         uint256 yieldRate,
         uint256 inflationRate
-    ) public pure returns (uint256 requiredInvestment) {
+    ) public view returns (uint256 requiredInvestment) {
         require(lifeExpectancyYears > 0, "Life expectancy must be greater than 0");
-        require(monthlySpending > 0, "Monthly spending must be greater than 0");
+        require(monthlySpendingUSD > 0, "Monthly spending must be greater than 0");
         require(retirementAge > currentAge, "Retirement age must be greater than current age");
         require(yieldRate <= BASIS_POINTS, "Yield rate cannot exceed 100%");
         require(inflationRate <= BASIS_POINTS, "Inflation rate cannot exceed 100%");
         
+        // Convert monthly spending from USD to wei
+        uint256 monthlySpendingWei = usdToWei(monthlySpendingUSD);
+        
         // Calculate years until retirement
         uint256 yearsUntilRetirement = retirementAge.sub(currentAge);
         
-        // Calculate total months of retirement
-        uint256 totalRetirementMonths = lifeExpectancyYears.mul(MONTHS_PER_YEAR);
+        // Calculate the ratio (1 + AACPI) / (1 + AAROI) in basis points
+        // (1 + inflationRate/10000) / (1 + yieldRate/10000) = (10000 + inflationRate) / (10000 + yieldRate)
+        uint256 numerator = BASIS_POINTS.add(inflationRate);
+        uint256 denominator = BASIS_POINTS.add(yieldRate);
+        uint256 ratio = numerator.mul(BASIS_POINTS).div(denominator);
         
-        // Calculate the real yield rate (nominal yield - inflation)
-        uint256 realYieldRate;
-        if (yieldRate > inflationRate) {
-            realYieldRate = yieldRate.sub(inflationRate);
+        uint256 requiredInvestmentWei;
+        
+        if (inflationRate == yieldRate) {
+            // If AACPI = AAROI, use the simplified formula
+            // 12 * DMSAR * ratio^(DRA-CA) * LEAR
+            uint256 ratioToPower = calculatePower(ratio, yearsUntilRetirement);
+            requiredInvestmentWei = monthlySpendingWei
+                .mul(12)
+                .mul(ratioToPower)
+                .mul(lifeExpectancyYears)
+                .div(BASIS_POINTS);
         } else {
-            realYieldRate = 0; // If inflation is higher than yield, we can't maintain purchasing power
+            // If AACPI ≠ AAROI, use the geometric series formula
+            // 12 * DMSAR * ratio^(DRA-CA) * (1 - ratio^LEAR) / (1 - ratio)
+            uint256 ratioToPower = calculatePower(ratio, yearsUntilRetirement);
+            uint256 ratioToLEAR = calculatePower(ratio, lifeExpectancyYears);
+            
+            uint256 seriesNumerator = BASIS_POINTS.sub(ratioToLEAR);
+            uint256 seriesDenominator = BASIS_POINTS.sub(ratio);
+            
+            uint256 seriesResult = seriesNumerator.mul(BASIS_POINTS).div(seriesDenominator);
+            
+            requiredInvestmentWei = monthlySpendingWei
+                .mul(12)
+                .mul(ratioToPower)
+                .mul(seriesResult)
+                .div(BASIS_POINTS)
+                .div(BASIS_POINTS);
         }
         
-        // Calculate the present value of all future monthly payments
-        uint256 totalRequiredAmount = 0;
-        
-        for (uint256 month = 0; month < totalRetirementMonths; month++) {
-            // Calculate the future value of monthly spending adjusted for inflation
-            uint256 futureMonthlySpending = monthlySpending;
-            if (inflationRate > 0) {
-                uint256 inflationMultiplier = calculateInflationMultiplier(inflationRate, month);
-                futureMonthlySpending = monthlySpending.mul(inflationMultiplier).div(BASIS_POINTS);
-            }
-            
-            // Calculate the present value of this future payment
-            uint256 presentValue = calculatePresentValue(
-                futureMonthlySpending,
-                realYieldRate,
-                yearsUntilRetirement.mul(MONTHS_PER_YEAR).add(month)
-            );
-            
-            totalRequiredAmount = totalRequiredAmount.add(presentValue);
-        }
-        
-        return totalRequiredAmount;
+        return requiredInvestmentWei;
     }
 
     /**
@@ -143,6 +381,27 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
         public pure returns (uint256 multiplier) {
         uint256 monthlyInflationRate = inflationRate.mul(months).div(MONTHS_PER_YEAR);
         multiplier = BASIS_POINTS.add(monthlyInflationRate);
+    }
+
+    /**
+     * @dev Calculate power of a number (base^exponent) in basis points
+     * @param base Base number in basis points
+     * @param exponent Exponent (must be small to avoid overflow)
+     * @return result The result in basis points
+     */
+    function calculatePower(uint256 base, uint256 exponent) 
+        public pure returns (uint256 result) {
+        if (exponent == 0) {
+            return BASIS_POINTS;
+        }
+        if (exponent == 1) {
+            return base;
+        }
+        
+        result = BASIS_POINTS;
+        for (uint256 i = 0; i < exponent; i++) {
+            result = result.mul(base).div(BASIS_POINTS);
+        }
     }
 
     /**
@@ -169,9 +428,9 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Create a new pension plan for the caller
+     * @dev Create a new pension plan for the caller (USD input)
      * @param lifeExpectancyYears Life expectancy after retirement in years
-     * @param monthlySpending Required monthly spending in wei
+     * @param monthlySpendingUSD Required monthly spending in USD (scaled by 10^8)
      * @param retirementAge Age at retirement
      * @param currentAge Current age
      * @param yieldRate Expected annual yield rate (in basis points)
@@ -179,7 +438,7 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
      */
     function createPensionPlan(
         uint256 lifeExpectancyYears,
-        uint256 monthlySpending,
+        uint256 monthlySpendingUSD,
         uint256 retirementAge,
         uint256 currentAge,
         uint256 yieldRate,
@@ -187,7 +446,7 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
     ) external {
         uint256 requiredInvestment = calculateRequiredInvestment(
             lifeExpectancyYears,
-            monthlySpending,
+            monthlySpendingUSD,
             retirementAge,
             currentAge,
             yieldRate,
@@ -196,7 +455,7 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
         
         pensionPlans[msg.sender] = PensionPlan({
             lifeExpectancyYears: lifeExpectancyYears,
-            monthlySpending: monthlySpending,
+            monthlySpendingUSD: monthlySpendingUSD,
             retirementAge: retirementAge,
             currentAge: currentAge,
             expectedYieldRate: yieldRate,
@@ -218,9 +477,9 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Update an existing pension plan
+     * @dev Update an existing pension plan (USD input)
      * @param lifeExpectancyYears New life expectancy after retirement in years
-     * @param monthlySpending New required monthly spending in wei
+     * @param monthlySpendingUSD New required monthly spending in USD (scaled by 10^8)
      * @param retirementAge New age at retirement
      * @param currentAge New current age
      * @param yieldRate New expected annual yield rate (in basis points)
@@ -228,7 +487,7 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
      */
     function updatePensionPlan(
         uint256 lifeExpectancyYears,
-        uint256 monthlySpending,
+        uint256 monthlySpendingUSD,
         uint256 retirementAge,
         uint256 currentAge,
         uint256 yieldRate,
@@ -239,7 +498,7 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
         
         uint256 requiredInvestment = calculateRequiredInvestment(
             lifeExpectancyYears,
-            monthlySpending,
+            monthlySpendingUSD,
             retirementAge,
             currentAge,
             yieldRate,
@@ -248,7 +507,7 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
         
         pensionPlans[msg.sender] = PensionPlan({
             lifeExpectancyYears: lifeExpectancyYears,
-            monthlySpending: monthlySpending,
+            monthlySpendingUSD: monthlySpendingUSD,
             retirementAge: retirementAge,
             currentAge: currentAge,
             expectedYieldRate: yieldRate,
@@ -311,7 +570,8 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
         require(savings.paymentsStarted, "Payments not started");
         require(savings.paymentsRemaining > 0, "No payments remaining");
         
-        uint256 paymentAmount = plan.monthlySpending;
+        // Convert monthly spending from USD to wei for payment
+        uint256 paymentAmount = usdToWei(plan.monthlySpendingUSD);
         
         // Ensure we don't pay more than what's available
         if (paymentAmount > savings.totalDeposited.sub(savings.totalPaidOut)) {
@@ -386,7 +646,7 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
         
         return calculateRequiredInvestment(
             plan.lifeExpectancyYears,
-            plan.monthlySpending,
+            plan.monthlySpendingUSD,
             plan.retirementAge,
             plan.currentAge,
             plan.expectedYieldRate,
@@ -418,56 +678,41 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Update the yield rate from Pendle Finance (only owner)
-     * @param yieldRate New yield rate in basis points
-     */
-    function updateYieldRate(uint256 yieldRate) external onlyOwner {
-        require(yieldRate <= BASIS_POINTS, "Yield rate cannot exceed 100%");
-        historicalYields[block.timestamp] = yieldRate;
-        emit YieldRateUpdated(block.timestamp, yieldRate);
-    }
-
-    /**
-     * @dev Get the latest yield rate
-     * @return yieldRate The latest yield rate in basis points
-     */
-    function getLatestYieldRate() external view returns (uint256 yieldRate) {
-        // This would typically fetch from Pendle Finance API
-        // For now, return the default rate
-        return defaultYieldRate;
-    }
-
-    /**
-     * @dev Calculate monthly payment from a given investment amount
-     * @param investmentAmount Total investment amount in wei
+     * @dev Calculate monthly payment from a given investment amount (USD input)
+     * @param investmentAmountUSD Total investment amount in USD (scaled by 10^8)
      * @param lifeExpectancyYears Life expectancy after retirement in years
      * @param yieldRate Expected annual yield rate (in basis points)
      * @param inflationRate Expected annual inflation rate (in basis points)
-     * @return monthlyPayment The monthly payment amount in wei
+     * @return monthlyPaymentUSD The monthly payment amount in USD (scaled by 10^8)
      */
     function calculateMonthlyPayment(
-        uint256 investmentAmount,
+        uint256 investmentAmountUSD,
         uint256 lifeExpectancyYears,
         uint256 yieldRate,
         uint256 inflationRate
-    ) external pure returns (uint256 monthlyPayment) {
-        require(investmentAmount > 0, "Investment amount must be greater than 0");
+    ) external view returns (uint256 monthlyPaymentUSD) {
+        require(investmentAmountUSD > 0, "Investment amount must be greater than 0");
         require(lifeExpectancyYears > 0, "Life expectancy must be greater than 0");
         require(yieldRate <= BASIS_POINTS, "Yield rate cannot exceed 100%");
         require(inflationRate <= BASIS_POINTS, "Inflation rate cannot exceed 100%");
+        
+        // Convert investment amount from USD to wei
+        uint256 investmentAmountWei = usdToWei(investmentAmountUSD);
         
         uint256 totalRetirementMonths = lifeExpectancyYears.mul(MONTHS_PER_YEAR);
         uint256 realYieldRate = yieldRate > inflationRate ? yieldRate.sub(inflationRate) : 0;
         
         if (realYieldRate == 0) {
             // If no real yield, just divide investment by months
-            return investmentAmount.div(totalRetirementMonths);
+            uint256 monthlyPaymentWei = investmentAmountWei.div(totalRetirementMonths);
+            return weiToUsd(monthlyPaymentWei);
         }
         
         uint256 monthlyRate = realYieldRate.div(MONTHS_PER_YEAR);
         uint256 annuityFactor = calculateAnnuityFactor(monthlyRate, totalRetirementMonths);
         
-        monthlyPayment = investmentAmount.mul(monthlyRate).div(annuityFactor);
+        uint256 monthlyPaymentWei = investmentAmountWei.mul(monthlyRate).div(annuityFactor);
+        return weiToUsd(monthlyPaymentWei);
     }
 
     /**
@@ -517,17 +762,6 @@ contract PensionCalculator is Ownable, ReentrancyGuard {
         
         (bool success, ) = msg.sender.call{value: amountToWithdraw}("");
         require(success, "Withdrawal failed");
-    }
-
-    /**
-     * @dev Emergency withdrawal function for owner (only in emergency situations)
-     */
-    function emergencyWithdraw() external onlyOwner {
-        uint256 balance = address(this).balance;
-        require(balance > 0, "No funds to withdraw");
-        
-        (bool success, ) = owner().call{value: balance}("");
-        require(success, "Emergency withdrawal failed");
     }
 
     /**
