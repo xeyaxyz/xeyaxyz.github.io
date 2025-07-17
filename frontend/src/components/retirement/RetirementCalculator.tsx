@@ -4,6 +4,7 @@ import { CONTRACT_ADDRESS } from '../../utils/contract';
 import { createPortal } from 'react-dom';
 import { BlockMath, InlineMath } from 'react-katex';
 import BitcoinPriceChart from '../ui/BitcoinPriceChart';
+import EthereumPriceChart from '../ui/EthereumPriceChart';
 import WalletConnect from '../wallet/WalletConnect';
 import RetirementDashboard from './RetirementDashboard';
 import { calculateInvestmentWithNewFormula, FIXED_INFLATION_RATE } from '../../utils/calculations';
@@ -641,7 +642,13 @@ const RetirementCalculator: React.FC<RetirementCalculatorProps> = ({
               <br /><br />
               <p className="text-blue-700 dark:text-blue-200">
               <b>Ethereum</b> is a decentralized, open-source blockchain that introduced smart contracts—programmable agreements that execute automatically. Launched in 2015 by Vitalik Buterin and others, Ethereum enables developers to build decentralized applications (dApps) on its platform. It transitioned from proof-of-work to proof-of-stake in 2022 via "The Merge," making it more energy-efficient. Ether (ETH) is the native currency, used for transaction fees, staking, and governance. Ethereum is the backbone of DeFi, NFTs, DAOs, and many Web3 innovations.
+              </p>
+              {/* Ethereum Price Chart */}
+              <div className="mt-8">
+                <EthereumPriceChart />
+              </div>
               <br /><br />
+              <p className="text-blue-700 dark:text-blue-200">
               <b>Pendle Finance</b> is a DeFi protocol that splits yield-bearing tokens into two parts: principal tokens (PT) and yield tokens (YT). Principal tokens represent the base value of the underlying asset and are redeemable for 1:1 at maturity. They trade at a discount before maturity, allowing users to earn fixed yields by buying PTs and holding them to term. This mechanism enables secondary market interest rate trading and fixed-income strategies in DeFi. PTs are essential to Pendle’s mission of creating a yield-centric ecosystem for tokenized interest.
               <br /><br />
               <b>Solana</b> is a high-performance blockchain designed for fast, low-cost decentralized applications and crypto transactions. It uses a unique consensus mechanism combining proof-of-stake with proof-of-history, enabling it to handle thousands of transactions per second. Launched in 2020, Solana has attracted a wide range of DeFi, NFT, and gaming projects. Despite occasional network outages, its scalability and low fees make it a popular alternative to Ethereum. SOL is the native token used for staking, transaction fees, and governance.
