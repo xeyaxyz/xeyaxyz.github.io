@@ -119,6 +119,7 @@ const RetirementCalculator: React.FC<RetirementCalculatorProps> = ({
   const [averageYieldRate, setAverageYieldRate] = useState<number | null>(null);
   const [customAmount, setCustomAmount] = useState<number>(0);
   const [showWalletContent, setShowWalletContent] = useState(false);
+  const [showHelpText, setShowHelpText] = useState(false);
 
   // Fetch average yield rate on mount
   useEffect(() => {
@@ -316,8 +317,13 @@ const RetirementCalculator: React.FC<RetirementCalculatorProps> = ({
     }
   };
 
-  // Main button: Connect wallet and show wallet/dashboard content
-  const handleRequiredAmount = async () => {
+  // Handler for cryptocurrency save buttons
+  const handleCryptoSave = async () => {
+    if (!(window as any).ethereum) {
+      setError('MetaMask is not installed. Please install MetaMask to use this app.');
+      return;
+    }
+    
     if (!isConnected) {
       try {
         await connectWallet();
@@ -328,6 +334,11 @@ const RetirementCalculator: React.FC<RetirementCalculatorProps> = ({
     } else {
       setShowWalletContent(true);
     }
+  };
+
+  // Handler for help button
+  const handleHelpToggle = () => {
+    setShowHelpText(!showHelpText);
   };
 
   // Custom amount button: Earn interest on smaller amount
@@ -547,11 +558,11 @@ const RetirementCalculator: React.FC<RetirementCalculatorProps> = ({
           </div>
           */}
           
-          <div className="mt-8">
+          <div className="mt-8 space-y-3">
             <button
-              onClick={handleRequiredAmount}
+              onClick={handleCryptoSave}
               disabled={isCreatingPlan}
-              className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              className="w-full px-6 py-3 bg-gradient-to-r from-orange-500 to-yellow-500 text-white rounded-lg hover:from-orange-600 hover:to-yellow-600 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               {isCreatingPlan ? (
                 <div className="flex items-center justify-center space-x-2">
@@ -559,10 +570,84 @@ const RetirementCalculator: React.FC<RetirementCalculatorProps> = ({
                   <span>Creating Retirement Plan...</span>
                 </div>
               ) : (
-                `Connect your wallet`
+                `Save in Bitcoin`
               )}
             </button>
+            
+            <button
+              onClick={handleCryptoSave}
+              disabled={isCreatingPlan}
+              className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:from-purple-700 hover:to-blue-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isCreatingPlan ? (
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Creating...</span>
+                </div>
+              ) : (
+                'Save in Ethereum'
+              )}
+            </button>
+            
+            <button
+              onClick={handleCryptoSave}
+              disabled={isCreatingPlan}
+              className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isCreatingPlan ? (
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Creating...</span>
+                </div>
+              ) : (
+                'Save in PendleFinance principal tokens'
+              )}
+            </button>
+            
+            <button
+              onClick={handleCryptoSave}
+              disabled={isCreatingPlan}
+              className="w-full px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isCreatingPlan ? (
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Creating...</span>
+                </div>
+              ) : (
+                'Save in Solana'
+              )}
+            </button>
+            
+            <button
+              onClick={handleHelpToggle}
+              className="w-full px-6 py-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-lg hover:from-gray-700 hover:to-gray-800 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+            >
+              {showHelpText ? 'Hide the help text' : 'Help me with the decision'}
+            </button>
           </div>
+          
+          {/* Help Text */}
+          {showHelpText && (
+            <div className="mt-6 p-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+              <p className="text-blue-700 dark:text-blue-200">
+              <b>Bitcoin</b> is the first and most well-known cryptocurrency, created by the pseudonymous Satoshi Nakamoto in 2009. It is a decentralized digital currency that enables peer-to-peer transactions without the need for intermediaries like banks. Bitcoin's supply is capped at 21 million coins, introducing a deflationary economic model. It uses a proof-of-work consensus mechanism, where miners validate transactions and secure the network. Bitcoin is primarily used as a store of value and is often referred to as "digital gold."
+              </p>
+              
+              {/* Bitcoin Price Chart */}
+              <div className="mt-8">
+                <BitcoinPriceChart />
+              </div>
+              <br /><br />
+              <p className="text-blue-700 dark:text-blue-200">
+              <b>Ethereum</b> is a decentralized, open-source blockchain that introduced smart contracts—programmable agreements that execute automatically. Launched in 2015 by Vitalik Buterin and others, Ethereum enables developers to build decentralized applications (dApps) on its platform. It transitioned from proof-of-work to proof-of-stake in 2022 via "The Merge," making it more energy-efficient. Ether (ETH) is the native currency, used for transaction fees, staking, and governance. Ethereum is the backbone of DeFi, NFTs, DAOs, and many Web3 innovations.
+              <br /><br />
+              <b>Pendle Finance</b> is a DeFi protocol that splits yield-bearing tokens into two parts: principal tokens (PT) and yield tokens (YT). Principal tokens represent the base value of the underlying asset and are redeemable for 1:1 at maturity. They trade at a discount before maturity, allowing users to earn fixed yields by buying PTs and holding them to term. This mechanism enables secondary market interest rate trading and fixed-income strategies in DeFi. PTs are essential to Pendle’s mission of creating a yield-centric ecosystem for tokenized interest.
+              <br /><br />
+              <b>Solana</b> is a high-performance blockchain designed for fast, low-cost decentralized applications and crypto transactions. It uses a unique consensus mechanism combining proof-of-stake with proof-of-history, enabling it to handle thousands of transactions per second. Launched in 2020, Solana has attracted a wide range of DeFi, NFT, and gaming projects. Despite occasional network outages, its scalability and low fees make it a popular alternative to Ethereum. SOL is the native token used for staking, transaction fees, and governance.
+              </p>
+            </div>
+          )}
           
           {/* Wallet and Dashboard Content */}
           {showWalletContent && isConnected && (
