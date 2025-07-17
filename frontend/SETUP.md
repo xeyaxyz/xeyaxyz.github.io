@@ -5,7 +5,7 @@
 Before running the frontend, you need to configure the smart contract addresses. Create a `.env` file in the frontend directory with the following variables:
 
 ```env
-# Pension Calculator Smart Contract Address
+# Retirement Calculator Smart Contract Address
 # Replace with the actual deployed contract address
 REACT_APP_CONTRACT_ADDRESS=0x0000000000000000000000000000000000000000
 
@@ -29,7 +29,7 @@ REACT_APP_ETH_USD_PRICE_FEED=0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419
 
 1. **Deploy the Smart Contract**:
    ```bash
-   # Deploy PensionCalculator.sol with the Chainlink price feed address
+   # Deploy RetirementCalculator.sol with the Chainlink price feed address
    npx hardhat deploy --network mainnet
    ```
 
@@ -49,7 +49,7 @@ The frontend now includes:
 - **Real-time Dashboard**: Fetches actual data from the smart contract
 - **Smart Contract Integration**: All calculations use the on-chain contract
 - **USD/ETH Conversion**: Uses Chainlink price feeds for accurate conversions
-- **Pension Plan Creation**: Users can create and manage pension plans
+- **Retirement Plan Creation**: Users can create and manage retirement plans
 - **Progress Tracking**: Real-time tracking of savings progress
 - **Payment Status**: Shows payment eligibility and status
 

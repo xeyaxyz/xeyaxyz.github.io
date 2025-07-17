@@ -3,6 +3,10 @@ import { useWallet } from '../../context/WalletContext';
 import { CONTRACT_ADDRESS } from '../../utils/contract';
 import { createPortal } from 'react-dom';
 import { BlockMath, InlineMath } from 'react-katex';
+import BitcoinPriceChart from '../ui/BitcoinPriceChart';
+import WalletConnect from '../wallet/WalletConnect';
+import RetirementDashboard from './RetirementDashboard';
+import { calculateInvestmentWithNewFormula, FIXED_INFLATION_RATE } from '../../utils/calculations';
 
 // Tooltip component using a portal
 const Tooltip: React.FC<{ text: string; children: ReactNode }> = ({ text, children }) => {
@@ -66,14 +70,21 @@ const Tooltip: React.FC<{ text: string; children: ReactNode }> = ({ text, childr
   );
 };
 
-interface PensionForm {
+export interface RetirementForm {
   lifeExpectancyYears: number;
   monthlySpending: number;
   retirementAge: number;
   currentAge: number;
 }
 
-const defaultForm: PensionForm = {
+interface RetirementCalculatorProps {
+  onCalculate?: (data: RetirementForm) => Promise<string>;
+  onCreatePlan?: (data: RetirementForm) => Promise<void>;
+  loading?: boolean;
+  hasExistingPlan?: boolean;
+}
+
+const defaultForm: RetirementForm = {
   lifeExpectancyYears: 20,
   monthlySpending: 5000,
   retirementAge: 65,
@@ -87,49 +98,27 @@ async function fetchPendleAverageYieldRate(): Promise<number> {
   // TODO: Replace with actual contract call
   // Simulate network delay
   await new Promise((resolve) => setTimeout(resolve, 400));
-  return 5.2; // Example: 5.2% annual yield
+  return 0; // Example: 5.2% annual yield
 }
 
-const FIXED_INFLATION_RATE = 2.54; // 2.54% average inflation
 
 
-
-// New calculation function based on the specified formula
-function calculateInvestmentWithNewFormula(form: PensionForm, averageYieldRate: number, inflationRate: number): number {
-  const { lifeExpectancyYears, monthlySpending, retirementAge, currentAge } = form;
-  const yearsUntilRetirement = retirementAge - currentAge;
-  
-  // Convert percentages to decimals
-  const aaroi = averageYieldRate / 100;
-  const aacpi = inflationRate / 100;
-  
-  // Calculate the ratio (1 + AACPI) / (1 + AAROI)
-  const ratio = (1 + aacpi) / (1 + aaroi);
-  
-  let requiredInvestment: number;
-  
-  if (Math.abs(aacpi - aaroi) < 0.0001) {
-    // If AACPI = AAROI, use the simplified formula
-    requiredInvestment = 12 * monthlySpending * Math.pow(ratio, yearsUntilRetirement) * lifeExpectancyYears;
-  } else {
-    // If AACPI ≠ AAROI, use the geometric series formula
-    const numerator = 1 - Math.pow(ratio, lifeExpectancyYears);
-    const denominator = 1 - ratio;
-    requiredInvestment = 12 * monthlySpending * Math.pow(ratio, yearsUntilRetirement) * (numerator / denominator);
-  }
-  
-  return Math.round(requiredInvestment);
-}
-
-const PensionCalculator: React.FC = () => {
-  const { isConnected, contract, account } = useWallet();
-  const [form, setForm] = useState<PensionForm>(defaultForm);
+const RetirementCalculator: React.FC<RetirementCalculatorProps> = ({
+  onCalculate,
+  onCreatePlan,
+  loading = false,
+  hasExistingPlan = false,
+}) => {
+  const { isConnected, contract, account, connectWallet } = useWallet();
+  const [form, setForm] = useState<RetirementForm>(defaultForm);
   const [requiredInvestment, setRequiredInvestment] = useState<number | null>(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [isCreatingPlan, setIsCreatingPlan] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [averageYieldRate, setAverageYieldRate] = useState<number | null>(null);
+  const [customAmount, setCustomAmount] = useState<number>(0);
+  const [showWalletContent, setShowWalletContent] = useState(false);
 
   // Fetch average yield rate on mount
   useEffect(() => {
@@ -161,6 +150,13 @@ const PensionCalculator: React.FC = () => {
       return;
     }
 
+    // Defensive check: log and verify contract instance
+    console.log('Current contract instance:', contract);
+    if (!contract || typeof contract.calculateRequiredInvestment !== 'function') {
+      setError('Smart contract not loaded or invalid. Please reconnect your wallet.');
+      return;
+    }
+
     setIsCalculating(true);
     setError(null);
     
@@ -173,7 +169,10 @@ const PensionCalculator: React.FC = () => {
         retirementAge,
         currentAge
       });
-      
+      // Log provider network
+      if (contract && contract.getProvider()) {
+        contract.getProvider().getNetwork().then(net => console.log('Provider network:', net));
+      }
       // Call the smart contract to calculate required investment
       const yieldRateBps = Math.round((averageYieldRate ?? 0) * 100);
       const inflationRateBps = Math.round(FIXED_INFLATION_RATE * 100);
@@ -189,8 +188,10 @@ const PensionCalculator: React.FC = () => {
       console.log('Calculation result:', requiredInvestmentUSD);
       setRequiredInvestment(requiredInvestmentUSD);
     } catch (err: any) {
-      console.error('Error calculating investment:', err);
-      
+      console.error('Error calculating investment:', err); // Log full error
+      if (contract && contract.getProvider()) {
+        contract.getProvider().getNetwork().then(net => console.log('Provider network (on error):', net));
+      }
       // Provide more specific error messages
       if (err.message?.includes('contract')) {
         setError('Smart contract not found. Please ensure the contract is deployed and the address is correct.');
@@ -213,69 +214,135 @@ const PensionCalculator: React.FC = () => {
     return calculateInvestmentWithNewFormula(form, averageYieldRate ?? 0, FIXED_INFLATION_RATE);
   };
 
-  const createPensionPlan = async () => {
-    // Check if MetaMask is installed
+  // Helper to check if a plan exists for the current user
+  const checkPlanExists = async () => {
+    if (!contract || !account) return false;
+    const plan = await contract.getRetirementPlan(account);
+    return !!plan;
+  };
+
+  // Helper to create a plan if needed, then deposit funds
+  const handleDeposit = async (monthlySpendingUSD: number) => {
     if (!(window as any).ethereum) {
-      setError('MetaMask is not installed. Please install MetaMask to create a retirement plan.');
+      setError('MetaMask is not installed. Please install MetaMask to continue.');
       return;
     }
-
-    // Check if wallet is connected
     if (!isConnected || !contract || !account) {
-      setError('Please connect your wallet to create a retirement plan.');
+      setError('Please connect your wallet.');
       return;
     }
-
-    if (requiredInvestment === null) {
-      setError('Please calculate the required investment first.');
+    if (monthlySpendingUSD <= 0) {
+      setError('Amount must be greater than zero.');
       return;
     }
-
-    // Check if contract is deployed
-    if (CONTRACT_ADDRESS === '0x0000000000000000000000000000000000000000') {
-      setError('Smart contract is not deployed. Please deploy the PensionCalculator contract first to create retirement plans.');
-      return;
-    }
-
     setIsCreatingPlan(true);
     setError(null);
-    
+    setSuccess(null);
     try {
-      const { lifeExpectancyYears, monthlySpending, retirementAge, currentAge } = form;
-      
-      // Create the pension plan
-      const yieldRateBps = Math.round((averageYieldRate ?? 0) * 100);
-      const inflationRateBps = Math.round(FIXED_INFLATION_RATE * 100);
-      const tx = await contract.createPensionPlan(
-        lifeExpectancyYears,
-        monthlySpending,
-        retirementAge,
-        currentAge,
-        yieldRateBps,
-        inflationRateBps
-      );
-      
-      // Wait for transaction confirmation
-      await tx.wait();
-      
-      setSuccess('Retirement plan created successfully! You can now deposit funds to reach your target.');
-      setRequiredInvestment(null); // Clear the result to encourage new calculations
-    } catch (err: any) {
-      console.error('Error creating retirement plan:', err);
-      
-      // Provide specific error messages
-      if (err.message?.includes('user rejected')) {
-        setError('Transaction was cancelled by user.');
-      } else if (err.message?.includes('insufficient funds')) {
-        setError('Insufficient ETH for gas fees. Please add more ETH to your wallet.');
-      } else if (err.message?.includes('network')) {
-        setError('Network error. Please check your connection and try again.');
-      } else {
-        setError(`Failed to create retirement plan: ${err.message || 'Unknown error'}`);
+      console.log("Account:", account);
+      // 1. Check if plan exists
+      const planExists = await checkPlanExists();
+      console.log("Plan exists:", planExists);
+      // 2. If not, create the plan
+      if (!planExists) {
+        const { lifeExpectancyYears, retirementAge, currentAge } = form;
+        const yieldRateBps = Math.round((averageYieldRate ?? 0) * 100);
+        const inflationRateBps = Math.round(FIXED_INFLATION_RATE * 100);
+        try {
+          const tx = await contract.createRetirementPlan(
+            lifeExpectancyYears,
+            monthlySpendingUSD,
+            retirementAge,
+            currentAge,
+            yieldRateBps,
+            inflationRateBps
+          );
+          await tx.wait();
+          console.log("Retirement plan created");
+        } catch (planErr) {
+          const errObj = planErr as Error;
+          console.error("Error creating retirement plan:", errObj);
+          setError(`Failed to create retirement plan: ${errObj.message || planErr}`);
+          setIsCreatingPlan(false);
+          return;
+        }
+      }
+      // Log user savings before deposit
+      let savings;
+      try {
+        savings = await contract.getUserSavings(account);
+        console.log("User savings:", savings);
+      } catch (savingsErr) {
+        const errObj = savingsErr as Error;
+        console.error("Error fetching user savings:", errObj);
+      }
+      // 3. Convert USD to ETH (wei) and deposit
+      const usdAmountScaled = Math.round(monthlySpendingUSD * 1e8);
+      console.log("USD amount scaled:", usdAmountScaled);
+      let weiAmount;
+      try {
+        weiAmount = await contract.usdToWei(usdAmountScaled);
+        console.log("Wei amount:", weiAmount);
+      } catch (convErr) {
+        const errObj = convErr as Error;
+        console.error("Error converting USD to Wei:", errObj);
+        setError(`Failed to convert USD to Wei: ${errObj.message || convErr}`);
+        setIsCreatingPlan(false);
+        return;
+      }
+      try {
+        const tx2 = await contract.depositFunds(weiAmount);
+        await tx2.wait();
+        setSuccess('Deposit successful! Your funds have been added to your retirement plan.');
+        setCustomAmount(0);
+        console.log("Deposit successful");
+      } catch (depErr) {
+        const errObj = depErr as Error;
+        console.error('Error in deposit flow:', errObj);
+        if (errObj.message?.includes('user rejected')) {
+          setError('Transaction was cancelled by user.');
+        } else if (errObj.message?.includes('insufficient funds')) {
+          setError('Insufficient ETH for gas fees or deposit. Please add more ETH to your wallet.');
+        } else if (errObj.message?.includes('network')) {
+          setError('Network error. Please check your connection and try again.');
+        } else {
+          setError(`Failed to deposit funds: ${errObj.message || 'Unknown error'}`);
+        }
+        setIsCreatingPlan(false);
+        return;
       }
     } finally {
       setIsCreatingPlan(false);
     }
+  };
+
+  // Main button: Connect wallet and show wallet/dashboard content
+  const handleRequiredAmount = async () => {
+    if (!isConnected) {
+      try {
+        await connectWallet();
+        setShowWalletContent(true);
+      } catch (err: any) {
+        setError(err.message || 'Failed to connect wallet.');
+      }
+    } else {
+      setShowWalletContent(true);
+    }
+  };
+
+  // Custom amount button: Earn interest on smaller amount
+  const handleCustomAmount = async () => {
+    if (customAmount === 0) {
+      setError('Please enter a custom amount greater than zero.');
+      return;
+    }
+    await handleDeposit(customAmount);
+  };
+
+  const handleCustomAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = Number(e.target.value);
+    setCustomAmount(value);
+    setError(null); // Clear any previous errors when user starts typing
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -398,12 +465,25 @@ const PensionCalculator: React.FC = () => {
 
       {requiredInvestment !== null && (
         <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-700 rounded-lg p-6 w-full max-w-none mx-auto">
-          <h3 className="text-lg font-semibold text-green-800 dark:text-green-300 mb-2">
-            Required Amount
+          <h3 className="text-lg font-semibold text-green-800 dark:text-green-300 mb-0.1 text-center">
+          With an average annual consumer price index of 2.54% over the last 30 years, you need
           </h3>
-          <p className="text-3xl font-bold text-green-900 dark:text-green-100">
+          <p className="text-4xl font-bold text-green-900 dark:text-green-100 text-center">
             ${requiredInvestment.toLocaleString(undefined, { maximumFractionDigits: 2 })}
           </p>
+          <h3 className="text-lg font-semibold text-green-800 dark:text-green-300 mb-2 text-center">
+            to spend ${form.monthlySpending.toLocaleString()} per month at today's prices after retirement. <br />
+            This is achievable if you start saving now.
+          </h3>
+
+          {/* Bitcoin Price Chart - moved above Calculation details */}
+          {/*
+          <div className="mb-8">
+            <BitcoinPriceChart />
+          </div>
+          */}
+
+          {/*
           <div className="mt-4 text-sm text-gray-700 dark:text-gray-200">
             <strong>Calculation details:</strong><br />
             Life expectancy after retirement (LEAR): <b>{form.lifeExpectancyYears}</b> years<br />
@@ -411,18 +491,15 @@ const PensionCalculator: React.FC = () => {
             Desired retirement age (DRA): <b>{form.retirementAge}</b><br />
             Current age (CA): <b>{form.currentAge}</b><br />
             Years until retirement (DRA-CA): <b>{form.retirementAge - form.currentAge}</b><br />
-            Average annual interest on yield farming (AAROI): <b>{averageYieldRate?.toFixed(2)}%</b> (based on average across last 5 years)<br />
             Average annual consumer price index (AACPI): <b>{FIXED_INFLATION_RATE}%</b> (based on average across last 30 years)<br /><br />
             The amount of money you want to spend during your retirement:
             <BlockMath math={String.raw`\sum_{k=0}^{\text{LEAR}-1} 12 \times \text{DMSAR} \times (1+0.01\,\text{AACPI})^{\text{DRA}-\text{CA}+k}`} />
             Taking into account that you earn interest both before and after retirement, the amount of money you need to stake now is
-            <BlockMath math={String.raw`\sum_{k=0}^{\text{LEAR}-1} 12 \times \text{DMSAR} \times \left(\frac{1+0.01\,\text{AACPI}}{1+0.01\,\text{AAROI}}\right)^{\text{DRA}-\text{CA}+k}`} />
-            <span className="block mt-2">According to the geometric series sum formula, if AACPI &ne; AAROI, this sum is equal to</span>
-            <BlockMath math={String.raw`12 \times \text{DMSAR} \times \left(\frac{1+0.01\,\text{AACPI}}{1+0.01\,\text{AAROI}}\right)^{\text{DRA}-\text{CA}} \times \frac{1-\left(\frac{1+0.01\,\text{AACPI}}{1+0.01\,\text{AAROI}}\right)^{\text{LEAR}}}{1-\left(\frac{1+0.01\,\text{AACPI}}{1+0.01\,\text{AAROI}}\right)}`}/>
-            <span className="block mt-2">If AACPI = AAROI, then this sum is equal to</span>
-            <BlockMath math={String.raw`12 \times \text{DMSAR} \times \left(\frac{1+0.01\,\text{AACPI}}{1+0.01\,\text{AAROI}}\right)^{\text{DRA}-\text{CA}} \times \text{LEAR}`}/>
-
-            {/* Substitution with user values, only show the relevant formula and numeric evaluation */}
+            <BlockMath math={String.raw`\sum_{k=0}^{\text{LEAR}-1} 12 \times \text{DMSAR} \times \left(\frac{1+0.01\,\text{AACPI}}{1+0.01\,\text{AIOYC}}\right)^{\text{DRA}-\text{CA}+k}`} />
+            <span className="block mt-2">According to the geometric series sum formula, if AACPI &ne; AIOYC, this sum is equal to</span>
+            <BlockMath math={String.raw`12 \times \text{DMSAR} \times \left(\frac{1+0.01\,\text{AACPI}}{1+0.01\,\text{AIOYC}}\right)^{\text{DRA}-\text{CA}} \times \frac{1-\left(\frac{1+0.01\,\text{AACPI}}{1+0.01\,\text{AIOYC}}\right)^{\text{LEAR}}}{1-\left(\frac{1+0.01\,\text{AACPI}}{1+0.01\,\text{AIOYC}}\right)}`}/>
+            <span className="block mt-2">If AACPI = AIOYC, then this sum is equal to</span>
+            <BlockMath math={String.raw`12 \times \text{DMSAR} \times \left(\frac{1+0.01\,\text{AACPI}}{1+0.01\,\text{AIOYC}}\right)^{\text{DRA}-\text{CA}} \times \text{LEAR}`}/>
             <span className="block mt-6 font-semibold">With your values:</span>
             {(() => {
               const DMSAR = form.monthlySpending;
@@ -430,20 +507,20 @@ const PensionCalculator: React.FC = () => {
               const DRA = form.retirementAge;
               const CA = form.currentAge;
               const AACPI = FIXED_INFLATION_RATE;
-              const AAROI = Number(averageYieldRate) || 0;
+              const AIOYC = Number(averageYieldRate) || 0;
               const yearsUntilRetirement = DRA - CA;
-              const ratio = (1 + 0.01 * AACPI) / (1 + 0.01 * AAROI);
+              const ratio = (1 + 0.01 * AACPI) / (1 + 0.01 * AIOYC);
               const ratioPow = Math.pow(ratio, yearsUntilRetirement);
               const ratioPowRounded = Number(ratioPow.toFixed(3));
               const ratioStr = ratioPowRounded.toLocaleString(undefined, { maximumFractionDigits: 3 });
-              if (Math.abs(AACPI - AAROI) < 0.0001) {
+              if (Math.abs(AACPI - AIOYC) < 0.0001) {
                 const approx = 12 * DMSAR * ratioPow * LEAR;
                 const approxTrunc = Math.trunc(approx);
                 return (
                   <>
                     <div className="whitespace-nowrap mt-2 text-center">
                       <InlineMath math={
-                        String.raw`12 \times ${DMSAR} \times \left(\frac{1+0.01\times${AACPI}}{1+0.01\times${AAROI}}\right)^{${DRA}-${CA}} \times ${LEAR} \approx 12 \times ${DMSAR} \times ${ratioStr} \times ${LEAR} \approx ${approxTrunc.toString()}`
+                        String.raw`12 \times ${DMSAR} \times \left(\frac{1+0.01\times${AACPI}}{1+0.01\times${AIOYC}}\right)^{${DRA}-${CA}} \times ${LEAR} \approx 12 \times ${DMSAR} \times ${ratioStr} \times ${LEAR} \approx ${approxTrunc.toString()}`
                       }/>
                     </div>
                   </>
@@ -460,7 +537,7 @@ const PensionCalculator: React.FC = () => {
                   <>
                     <div className="whitespace-nowrap mt-2 text-center">
                       <InlineMath math={
-                        String.raw`12 \times ${DMSAR} \times \left(\frac{1+0.01\times${AACPI}}{1+0.01\times${AAROI}}\right)^{${DRA}-${CA}} \times \frac{1-\left(\frac{1+0.01\times${AACPI}}{1+0.01\times${AAROI}}\right)^{${LEAR}}}{1-\left(\frac{1+0.01\times${AACPI}}{1+0.01\times${AAROI}}\right)} \approx 12 \times ${DMSAR} \times ${ratioStr} \times ${seriesRounded} \approx ${approxTrunc.toString()}`
+                        String.raw`12 \times ${DMSAR} \times \left(\frac{1+0.01\times${AACPI}}{1+0.01\times${AIOYC}}\right)^{${DRA}-${CA}} \times \frac{1-\left(\frac{1+0.01\times${AACPI}}{1+0.01\times${AIOYC}}\right)^{${LEAR}}}{1-\left(\frac{1+0.01\times${AACPI}}{1+0.01\times${AIOYC}}\right)} \approx 12 \times ${DMSAR} \times ${ratioStr} \times ${seriesRounded} \approx ${approxTrunc.toString()}`
                       }/>
                     </div>
                   </>
@@ -468,10 +545,11 @@ const PensionCalculator: React.FC = () => {
               }
             })()}
           </div>
+          */}
           
           <div className="mt-8">
             <button
-              onClick={createPensionPlan}
+              onClick={handleRequiredAmount}
               disabled={isCreatingPlan}
               className="w-full px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
@@ -481,14 +559,80 @@ const PensionCalculator: React.FC = () => {
                   <span>Creating Retirement Plan...</span>
                 </div>
               ) : (
-                'Earn interest'
+                `Connect your wallet`
               )}
             </button>
           </div>
+          
+          {/* Wallet and Dashboard Content */}
+          {showWalletContent && isConnected && (
+            <div className="mt-8 space-y-8">
+              {/* Dashboard Section */}
+              <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6">
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="w-8 h-8 bg-gradient-to-r from-green-600 to-emerald-600 rounded-lg flex items-center justify-center">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Dashboard</h3>
+                </div>
+                <RetirementDashboard formData={form} averageYieldRate={averageYieldRate ?? undefined} />
+              </div>
+
+              {/* Wallet Section */}
+              <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6">
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="w-8 h-8 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg flex items-center justify-center">
+                    <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">Wallet</h3>
+                </div>
+                <WalletConnect />
+              </div>
+            </div>
+          )}
+          
+          {/*
+          <div className="mt-4 flex gap-4 items-end">
+            <button
+              onClick={handleCustomAmount}
+              disabled={isCreatingPlan}
+              className="w-1/2 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {isCreatingPlan ? (
+                <div className="flex items-center justify-center space-x-2">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Creating...</span>
+                </div>
+              ) : (
+                'Earn interest on smaller amount'
+              )}
+            </button>
+            
+            <div className="w-1/2 space-y-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Custom Amount (USD)
+              </label>
+              <input
+                type="number"
+                name="customAmount"
+                value={customAmount}
+                onChange={handleCustomAmountChange}
+                min="1"
+                className={inputClass}
+                placeholder="Enter amount"
+              />
+            </div>
+          </div>
+          */}
+          
         </div>
       )}
     </div>
   );
 };
 
-export default PensionCalculator; 
+export default RetirementCalculator; 

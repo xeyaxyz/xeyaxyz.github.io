@@ -1,36 +1,39 @@
 import { ethers } from 'ethers';
 
-// PensionCalculator ABI - only the functions we need for the frontend
-export const PENSION_CALCULATOR_ABI = [
-  // View functions
-  "function getPensionPlan(address user) external view returns (tuple(uint256 lifeExpectancyYears, uint256 monthlySpendingUSD, uint256 retirementAge, uint256 currentAge, uint256 expectedYieldRate, uint256 inflationRate, bool isActive))",
-  "function getUserSavings(address user) external view returns (tuple(uint256 totalDeposited, uint256 targetAmount, bool paymentsStarted, uint256 lastPaymentTime, uint256 paymentsRemaining, uint256 totalPaidOut))",
-  "function getRequiredInvestment(address user) external view returns (uint256)",
-  "function hasReachedTarget(address user) external view returns (bool)",
-  "function getRemainingAmount(address user) external view returns (uint256)",
-  "function getEthUsdPrice() external view returns (uint256)",
-  "function weiToUsd(uint256 weiAmount) external view returns (uint256)",
-  "function usdToWei(uint256 usdAmount) external view returns (uint256)",
-  "function calculateMonthlyPayment(uint256 investmentAmountUSD, uint256 lifeExpectancyYears, uint256 yieldRate, uint256 inflationRate) external view returns (uint256)",
-  
-  // State changing functions
-  "function createPensionPlan(uint256 lifeExpectancyYears, uint256 monthlySpendingUSD, uint256 retirementAge, uint256 currentAge, uint256 yieldRate, uint256 inflationRate) external",
-  "function updatePensionPlan(uint256 lifeExpectancyYears, uint256 monthlySpendingUSD, uint256 retirementAge, uint256 currentAge, uint256 yieldRate, uint256 inflationRate) external",
-  "function depositFunds() external payable",
-  "function executeMonthlyPayment(address user) external",
-  "function deactivatePensionPlan() external",
-  "function withdrawFunds() external",
-  
-  // Events
-  "event PensionPlanCreated(address indexed user, uint256 requiredInvestment)",
-  "event PensionPlanUpdated(address indexed user, uint256 newRequiredInvestment)",
-  "event FundsDeposited(address indexed user, uint256 amount, uint256 totalDeposited, uint256 targetAmount)",
-  "event TargetReached(address indexed user, uint256 targetAmount)",
-  "event MonthlyPaymentSent(address indexed user, uint256 amount, uint256 paymentsRemaining)",
-  "event PaymentsCompleted(address indexed user, uint256 totalPaidOut)"
+// RetirementCalculator ABI - full ABI from artifacts
+export const RETIREMENT_CALCULATOR_ABI = [
+  {"inputs":[{"internalType":"address","name":"_ethUsdPriceFeed","type":"address"},{"internalType":"address","name":"initialOwner","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},
+  {"inputs":[{"internalType":"address","name":"owner","type":"address"}],"name":"OwnableInvalidOwner","type":"error"},
+  {"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"OwnableUnauthorizedAccount","type":"error"},
+  {"inputs":[],"name":"ReentrancyGuardReentrantCall","type":"error"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"totalDeposited","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"targetAmount","type":"uint256"}],"name":"FundsDeposited","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"amount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"paymentsRemaining","type":"uint256"}],"name":"MonthlyPaymentSent","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"totalPaidOut","type":"uint256"}],"name":"PaymentsCompleted","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"blockNumber","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"ethPriceUSD","type":"uint256"}],"name":"PriceFeedUpdated","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"requiredInvestment","type":"uint256"}],"name":"RetirementPlanCreated","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"newRequiredInvestment","type":"uint256"}],"name":"RetirementPlanUpdated","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"user","type":"address"},{"indexed":false,"internalType":"uint256","name":"targetAmount","type":"uint256"}],"name":"TargetReached","type":"event"},
+  {"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"timestamp","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"yieldRate","type":"uint256"}],"name":"YieldRateUpdated","type":"event"},
+  {"inputs":[],"name":"BASIS_POINTS","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"createRetirementPlan","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"uint256","name":"lifeExpectancyYears","type":"uint256"},{"internalType":"uint256","name":"monthlySpendingUSD","type":"uint256"},{"internalType":"uint256","name":"retirementAge","type":"uint256"},{"internalType":"uint256","name":"currentAge","type":"uint256"},{"internalType":"uint256","name":"yieldRate","type":"uint256"},{"internalType":"uint256","name":"inflationRate","type":"uint256"}],"name":"updateRetirementPlan","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[],"name":"depositFunds","outputs":[],"stateMutability":"payable","type":"function"},
+  {"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"executeMonthlyPayment","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[],"name":"deactivateRetirementPlan","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[],"name":"withdrawFunds","outputs":[],"stateMutability":"nonpayable","type":"function"},
+  {"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"getRetirementPlan","outputs":[{"internalType":"uint256","name":"lifeExpectancyYears","type":"uint256"},{"internalType":"uint256","name":"monthlySpendingUSD","type":"uint256"},{"internalType":"uint256","name":"retirementAge","type":"uint256"},{"internalType":"uint256","name":"currentAge","type":"uint256"},{"internalType":"uint256","name":"expectedYieldRate","type":"uint256"},{"internalType":"uint256","name":"inflationRate","type":"uint256"},{"internalType":"bool","name":"isActive","type":"bool"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"getUserSavings","outputs":[{"internalType":"uint256","name":"totalDeposited","type":"uint256"},{"internalType":"uint256","name":"targetAmount","type":"uint256"},{"internalType":"bool","name":"paymentsStarted","type":"bool"},{"internalType":"uint256","name":"lastPaymentTime","type":"uint256"},{"internalType":"uint256","name":"paymentsRemaining","type":"uint256"},{"internalType":"uint256","name":"totalPaidOut","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"getRequiredInvestment","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"hasReachedTarget","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"getRemainingAmount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[],"name":"getEthUsdPrice","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"uint256","name":"weiAmount","type":"uint256"}],"name":"weiToUsd","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"uint256","name":"usdAmount","type":"uint256"}],"name":"usdToWei","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
+  {"inputs":[{"internalType":"uint256","name":"investmentAmountUSD","type":"uint256"},{"internalType":"uint256","name":"lifeExpectancyYears","type":"uint256"},{"internalType":"uint256","name":"yieldRate","type":"uint256"},{"internalType":"uint256","name":"inflationRate","type":"uint256"}],"name":"calculateMonthlyPayment","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}
 ];
 
-export interface PensionPlan {
+export interface RetirementPlan {
   lifeExpectancyYears: number;
   monthlySpendingUSD: number;
   retirementAge: number;
@@ -60,13 +63,14 @@ export interface DashboardData {
   paymentsStarted: boolean;
 }
 
-export class PensionContract {
+export class RetirementContract {
   private contract: ethers.Contract;
   private provider: ethers.providers.Web3Provider;
 
   constructor(contractAddress: string, provider: ethers.providers.Web3Provider) {
+    console.log('RetirementContract instantiated with address:', contractAddress);
     this.provider = provider;
-    this.contract = new ethers.Contract(contractAddress, PENSION_CALCULATOR_ABI, provider);
+    this.contract = new ethers.Contract(contractAddress, RETIREMENT_CALCULATOR_ABI, provider);
   }
 
   // Get signer for transactions
@@ -84,10 +88,10 @@ export class PensionContract {
     return usdScaled / 1e8;
   }
 
-  // Get pension plan for a user
-  async getPensionPlan(userAddress: string): Promise<PensionPlan | null> {
+  // Get retirement plan for a user
+  async getRetirementPlan(userAddress: string): Promise<RetirementPlan | null> {
     try {
-      const plan = await this.contract.getPensionPlan(userAddress);
+      const plan = await this.contract.getRetirementPlan(userAddress);
       if (!plan.isActive) return null;
       
       return {
@@ -100,7 +104,7 @@ export class PensionContract {
         isActive: plan.isActive
       };
     } catch (error) {
-      console.error('Error fetching pension plan:', error);
+      console.error('Error fetching retirement plan:', error);
       return null;
     }
   }
@@ -111,12 +115,12 @@ export class PensionContract {
       const savings = await this.contract.getUserSavings(userAddress);
       
       return {
-        totalDeposited: this.weiToUsdScaled(savings.totalDeposited.toNumber()),
-        targetAmount: this.weiToUsdScaled(savings.targetAmount.toNumber()),
+        totalDeposited: this.weiToUsdScaled(Number(savings.totalDeposited.toString())),
+        targetAmount: this.weiToUsdScaled(Number(savings.targetAmount.toString())),
         paymentsStarted: savings.paymentsStarted,
-        lastPaymentTime: savings.lastPaymentTime.toNumber(),
-        paymentsRemaining: savings.paymentsRemaining.toNumber(),
-        totalPaidOut: this.weiToUsdScaled(savings.totalPaidOut.toNumber())
+        lastPaymentTime: Number(savings.lastPaymentTime.toString()),
+        paymentsRemaining: Number(savings.paymentsRemaining.toString()),
+        totalPaidOut: this.weiToUsdScaled(Number(savings.totalPaidOut.toString()))
       };
     } catch (error) {
       console.error('Error fetching user savings:', error);
@@ -127,13 +131,13 @@ export class PensionContract {
   // Get dashboard data
   async getDashboardData(userAddress: string): Promise<DashboardData | null> {
     try {
-      const [pensionPlan, userSavings, hasReachedTarget] = await Promise.all([
-        this.getPensionPlan(userAddress),
+      const [retirementPlan, userSavings, hasReachedTarget] = await Promise.all([
+        this.getRetirementPlan(userAddress),
         this.getUserSavings(userAddress),
         this.contract.hasReachedTarget(userAddress)
       ]);
 
-      if (!pensionPlan || !userSavings) {
+      if (!retirementPlan || !userSavings) {
         return null;
       }
 
@@ -150,9 +154,9 @@ export class PensionContract {
       return {
         currentSavings: userSavings.totalDeposited,
         targetAmount: userSavings.targetAmount,
-        monthlyPayment: pensionPlan.monthlySpendingUSD,
+        monthlyPayment: retirementPlan.monthlySpendingUSD,
         nextPaymentDate,
-        totalPaymentsReceived: pensionPlan.lifeExpectancyYears * 12 - userSavings.paymentsRemaining,
+        totalPaymentsReceived: retirementPlan.lifeExpectancyYears * 12 - userSavings.paymentsRemaining,
         progressPercentage,
         hasReachedTarget,
         paymentsStarted: userSavings.paymentsStarted
@@ -175,9 +179,8 @@ export class PensionContract {
     try {
       // Convert monthly spending to scaled USD (multiply by 10^8)
       const monthlySpendingScaled = Math.floor(monthlySpendingUSD * 1e8);
-      
       // Call the smart contract to calculate required investment
-      const requiredInvestmentWei = await this.contract.calculateRequiredInvestment(
+      const result = await this.contract.callStatic.calculateRequiredInvestment(
         lifeExpectancyYears,
         monthlySpendingScaled,
         retirementAge,
@@ -185,17 +188,16 @@ export class PensionContract {
         yieldRateBps,
         inflationRateBps
       );
-      
-      // Convert wei to USD
-      return this.weiToUsdScaled(requiredInvestmentWei.toNumber());
+      // result is a BigNumber
+      return this.weiToUsdScaled(Number(result.toString()));
     } catch (error) {
       console.error('Error calculating required investment:', error);
       throw error;
     }
   }
 
-  // Create pension plan
-  async createPensionPlan(
+  // Create retirement plan
+  async createRetirementPlan(
     lifeExpectancyYears: number,
     monthlySpendingUSD: number,
     retirementAge: number,
@@ -209,7 +211,7 @@ export class PensionContract {
     // Convert monthly spending to scaled USD (multiply by 10^8)
     const monthlySpendingScaled = Math.floor(monthlySpendingUSD * 1e8);
     
-    return contract.createPensionPlan(
+    return contract.createRetirementPlan(
       lifeExpectancyYears,
       monthlySpendingScaled,
       retirementAge,
@@ -220,11 +222,9 @@ export class PensionContract {
   }
 
   // Deposit funds
-  async depositFunds(amountInEth: number): Promise<ethers.ContractTransaction> {
+  async depositFunds(amountInWei: string): Promise<ethers.ContractTransaction> {
     const signer = this.getSigner();
     const contract = this.contract.connect(signer);
-    
-    const amountInWei = ethers.utils.parseEther(amountInEth.toString());
     return contract.depositFunds({ value: amountInWei });
   }
 
@@ -246,12 +246,28 @@ export class PensionContract {
       return 0;
     }
   }
+
+  // Convert USD (scaled by 1e8) to Wei using the contract's usdToWei function
+  async usdToWei(usdAmountScaled: number): Promise<string> {
+    try {
+      const weiAmount = await this.contract.usdToWei(usdAmountScaled);
+      return weiAmount.toString();
+    } catch (error) {
+      console.error('Error converting USD to Wei:', error);
+      throw error;
+    }
+  }
+
+  // Public getter for provider (for debugging)
+  public getProvider() {
+    return this.provider;
+  }
 }
 
 // Contract address - this should be updated with the actual deployed contract address
 export const CONTRACT_ADDRESS = process.env.REACT_APP_CONTRACT_ADDRESS || '0x0000000000000000000000000000000000000000';
 
 // Create contract instance
-export const createPensionContract = (provider: ethers.providers.Web3Provider): PensionContract => {
-  return new PensionContract(CONTRACT_ADDRESS, provider);
+export const createRetirementContract = (provider: ethers.providers.Web3Provider): RetirementContract => {
+  return new RetirementContract(CONTRACT_ADDRESS, provider);
 }; 

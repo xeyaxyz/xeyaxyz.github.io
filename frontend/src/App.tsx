@@ -1,8 +1,8 @@
 import React from 'react';
 import { WalletProvider } from './context/WalletContext';
 import Header from './components/ui/Header';
-import PensionCalculator from './components/pension/PensionCalculator';
-import PensionDashboard from './components/pension/PensionDashboard';
+import RetirementCalculator, { RetirementForm } from './components/retirement/RetirementCalculator';
+import RetirementDashboard from './components/retirement/RetirementDashboard';
 import WalletConnect from './components/wallet/WalletConnect';
 import 'katex/dist/katex.min.css';
 
@@ -20,26 +20,39 @@ function App() {
               XeyaRetirement
               </span>
             </h1>
-            <br />
+            {/*
             <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-              Calculate the amount of cryptocurrency you need to secure your retirement.
+              Calculate how much money you need to secure your retirement on your own terms.
               <br />
-              Earn interest on your cryptocurrency.
+              Save, top-up and earn interest with XeyaRetirement.
             </p>
+            */}
           </div>
 
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+          <div className="flex justify-center">
             {/* Calculator Section */}
-            <section id="calculator" className="lg:col-span-3">
+            <section id="calculator" className="w-full max-w-4xl">
               <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-8">
-                <PensionCalculator />
+                <RetirementCalculator
+                  onCalculate={async (data: RetirementForm) => {
+                    // Always return a string, not a React element or object
+                    return '10.0';
+                  }}
+                  onCreatePlan={async (data: RetirementForm) => {
+                    // Placeholder: simulate plan creation
+                    return;
+                  }}
+                  loading={false}
+                  hasExistingPlan={false}
+                />
               </div>
             </section>
 
-            {/* Sidebar */}
+            {/* Sidebar - commented out
             <aside className="space-y-8 lg:col-span-1">
               {/* Dashboard Section */}
+              {/*
               <section id="dashboard">
                 <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6">
                   <div className="flex items-center space-x-3 mb-6">
@@ -50,11 +63,13 @@ function App() {
                     </div>
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white">Dashboard</h3>
                   </div>
-                  <PensionDashboard />
+                  <RetirementDashboard />
                 </div>
               </section>
+              */}
 
               {/* Wallet Section */}
+              {/*
               <section id="wallet">
                 <div className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6">
                   <div className="flex items-center space-x-3 mb-6">
@@ -68,14 +83,15 @@ function App() {
                   <WalletConnect />
                 </div>
               </section>
-            </aside>
+              */}
+            {/* </aside> */}
           </div>
 
           {/* Footer */}
           <footer className="mt-20 text-center">
             <div className="border-t border-gray-200 dark:border-gray-700 pt-8">
               <p className="text-gray-500 dark:text-gray-400">
-                © 2025 XeyaPension. Built with ❤️ for secure retirement planning.
+                © 2025 XeyaRetirement. Built with ❤️ for secure retirement planning.
               </p>
             </div>
           </footer>

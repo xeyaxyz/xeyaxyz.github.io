@@ -1,7 +1,7 @@
 {
-  "name": "pension-calculator",
+  "name": "retirement-calculator",
   "version": "1.0.0",
-  "description": "Pension Calculator with Smart Contract",
+  "description": "Retirement Calculator with Smart Contract",
   "main": "index.js",
   "scripts": {
     "compile": "hardhat compile",
@@ -12,6 +12,8 @@
     "hardhat": "^2.19.0"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^5.0.0"
+    "@openzeppelin/contracts": "^5.3.0",
+    "dotenv": "^17.2.0",
+    "lucide-react": "^0.525.0"
   }
-} 
+}

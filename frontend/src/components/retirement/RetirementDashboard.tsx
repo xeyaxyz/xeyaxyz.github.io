@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '../../context/WalletContext';
 import { DashboardData } from '../../utils/contract';
+import { calculateInvestmentWithNewFormula, FIXED_INFLATION_RATE } from '../../utils/calculations';
+import { RetirementForm } from './RetirementCalculator';
 
-const PensionDashboard: React.FC = () => {
+interface RetirementDashboardProps {
+  formData?: RetirementForm;
+  averageYieldRate?: number;
+}
+
+const RetirementDashboard: React.FC<RetirementDashboardProps> = ({ formData, averageYieldRate }) => {
   const { isConnected, account, contract } = useWallet();
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -45,7 +52,7 @@ const PensionDashboard: React.FC = () => {
           Connect Your Wallet
         </h3>
         <p className="text-gray-500 dark:text-gray-400">
-          Connect your wallet to view your pension dashboard and track your progress.
+          Connect your wallet to view your retirement dashboard and track your progress.
         </p>
       </div>
     );
@@ -64,7 +71,7 @@ const PensionDashboard: React.FC = () => {
           Loading Dashboard
         </h3>
         <p className="text-gray-500 dark:text-gray-400">
-          Fetching your pension data from the blockchain...
+          Fetching your retirement data from the blockchain...
         </p>
       </div>
     );
@@ -94,7 +101,7 @@ const PensionDashboard: React.FC = () => {
     );
   }
 
-  // Show message if no pension plan exists
+  // Show message if no retirement plan exists
   if (!dashboardData) {
     return (
       <div className="text-center py-8">
@@ -104,17 +111,11 @@ const PensionDashboard: React.FC = () => {
           </svg>
         </div>
         <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-          No Pension Plan Found
+          No Retirement Plan Found
         </h3>
         <p className="text-gray-500 dark:text-gray-400 mb-4">
-          You haven't created a pension plan yet. Use the calculator to create your first plan.
+          You haven't created a retirement plan yet. Use the calculator to create your first plan.
         </p>
-        <button 
-          onClick={() => window.location.hash = '#calculator'}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
-        >
-          Create Pension Plan
-        </button>
       </div>
     );
   }
@@ -136,18 +137,26 @@ const PensionDashboard: React.FC = () => {
           <div className="flex justify-between text-sm">
             <span className="text-gray-600 dark:text-gray-300">Target Amount</span>
             <span className="font-medium text-gray-900 dark:text-white">
-              ${dashboardData.targetAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              ${formData && averageYieldRate !== undefined 
+                ? calculateInvestmentWithNewFormula(formData, averageYieldRate, FIXED_INFLATION_RATE).toLocaleString(undefined, { maximumFractionDigits: 2 })
+                : dashboardData.targetAmount.toLocaleString(undefined, { maximumFractionDigits: 2 })
+              }
             </span>
           </div>
           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
             <div 
               className="bg-gradient-to-r from-blue-500 to-indigo-500 h-3 rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(dashboardData.progressPercentage, 100)}%` }}
+              style={{ width: `${Math.min(formData && averageYieldRate !== undefined 
+                ? (dashboardData.currentSavings / calculateInvestmentWithNewFormula(formData, averageYieldRate, FIXED_INFLATION_RATE)) * 100
+                : dashboardData.progressPercentage, 100)}%` }}
             ></div>
           </div>
           <div className="text-center">
             <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              {dashboardData.progressPercentage.toFixed(1)}%
+              {formData && averageYieldRate !== undefined 
+                ? ((dashboardData.currentSavings / calculateInvestmentWithNewFormula(formData, averageYieldRate, FIXED_INFLATION_RATE)) * 100).toFixed(1)
+                : dashboardData.progressPercentage.toFixed(1)
+              }%
             </span>
             <p className="text-sm text-gray-500 dark:text-gray-400">Complete</p>
           </div>
@@ -224,4 +233,4 @@ const PensionDashboard: React.FC = () => {
   );
 };
 
-export default PensionDashboard; 
+export default RetirementDashboard; 

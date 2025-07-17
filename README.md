@@ -1,10 +1,10 @@
-# XeyaPension - DeFi Pension Calculator
+# XeyaRetirement - DeFi Retirement Calculator
 
 A Solidity smart contract that calculates the required investment amount for pension planning using Pendle Finance yield-bearing instruments. The contract takes into account life expectancy, monthly spending requirements, and various financial parameters to determine the optimal investment strategy. **Once the target savings amount is reached, the contract automatically schedules and executes monthly payments to the user's wallet.**
 
 ## Features
 
-- **Pension Plan Calculation**: Calculate required investment amount based on life expectancy and monthly spending
+- **Retirement Plan Calculation**: Calculate required investment amount based on life expectancy and monthly spending
 - **Inflation Adjustment**: Accounts for inflation to maintain purchasing power over time
 - **Yield Rate Integration**: Integrates with Pendle Finance yield rates for accurate calculations
 - **Real-time Updates**: Update pension plans as circumstances change
@@ -19,14 +19,14 @@ A Solidity smart contract that calculates the required investment amount for pen
 
 ```
 xeyapension/
-├── PensionCalculator.sol          # Main smart contract
+├── RetirementCalculator.sol          # Main smart contract
 ├── package.json                   # Backend dependencies and scripts
 ├── hardhat.config.js             # Hardhat configuration
 ├── scripts/
 │   ├── deploy.js                 # Deployment script
 │   └── example.js                # Usage examples
 ├── test/
-│   └── PensionCalculator.test.js # Test suite
+│   └── RetirementCalculator.test.js # Test suite
 ├── frontend/                     # 🆕 React frontend application
 │   ├── src/
 │   │   ├── components/           # React components
@@ -101,7 +101,7 @@ The smart contract uses the following formula to calculate the required investme
 
 ### Payment Flow
 
-1. **Create Pension Plan**: User creates a pension plan with their parameters
+1. **Create Retirement Plan**: User creates a retirement plan with their parameters
 2. **Deposit Funds**: User deposits funds towards their target amount
 3. **Target Reached**: When total deposits reach the calculated target, payments automatically start
 4. **Monthly Payments**: Contract sends monthly payments to user's wallet every 30 days
@@ -134,11 +134,11 @@ function calculateRequiredInvestment(
 ) public pure returns (uint256 requiredInvestment)
 ```
 
-#### `createPensionPlan()`
+#### `createRetirementPlan()`
 Creates a new pension plan for the caller.
 
 ```solidity
-function createPensionPlan(
+function createRetirementPlan(
     uint256 lifeExpectancyYears,
     uint256 monthlySpending,
     uint256 retirementAge,
@@ -148,7 +148,7 @@ function createPensionPlan(
 ) external
 ```
 
-#### `updatePensionPlan()`
+#### `updateRetirementPlan()`
 Updates an existing pension plan with new parameters.
 
 #### `getRequiredInvestment()`
@@ -204,8 +204,8 @@ function getRemainingAmount(address user) external view returns (uint256)
 - **Transaction Management**: Easy deposit and payment execution
 
 ### 🆕 Key Components
-- **PensionCalculator**: Form for creating and calculating pension plans
-- **PensionDashboard**: Dashboard for monitoring savings and payments
+- **RetirementCalculator**: Form for creating and calculating retirement plans
+- **RetirementDashboard**: Dashboard for monitoring savings and payments
 - **WalletConnect**: MetaMask wallet connection component
 - **Header**: Navigation and branding
 
@@ -222,7 +222,7 @@ function getRemainingAmount(address user) external view returns (uint256)
 // Example: Calculate required investment for a 30-year-old planning to retire at 65
 // with 20 years life expectancy, $5000 monthly spending, 5% yield, 2% inflation
 
-const requiredInvestment = await pensionCalculator.calculateRequiredInvestment(
+const requiredInvestment = await retirementCalculator.calculateRequiredInvestment(
     20,                    // Life expectancy years
     ethers.parseEther("5000"), // Monthly spending
     65,                    // Retirement age
@@ -246,7 +246,7 @@ const data = {
 
 // Calculate and create plan
 const amount = await calculateInvestment(data);
-await createPensionPlan(data);
+await createRetirementPlan(data);
 
 // Deposit funds
 await depositFunds(parseFloat(amount));
@@ -295,8 +295,8 @@ npm test
 
 The contract emits the following events for tracking:
 
-- `PensionPlanCreated`: When a new pension plan is created
-- `PensionPlanUpdated`: When a pension plan is updated
+- `RetirementPlanCreated`: When a new retirement plan is created
+- `RetirementPlanUpdated`: When a retirement plan is updated
 - `YieldRateUpdated`: When yield rate is updated
 - `🆕 FundsDeposited`: When funds are deposited
 - `🆕 TargetReached`: When target amount is reached and payments start

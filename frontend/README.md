@@ -1,12 +1,12 @@
-# XeyaPension Frontend
+# XeyaRetirement Frontend
 
-A modern, responsive React application for the XeyaPension DeFi Pension Calculator. Built with TypeScript, Tailwind CSS, and React best practices.
+A modern, responsive React application for the XeyaRetirement DeFi Retirement Calculator. Built with TypeScript, Tailwind CSS, and React best practices.
 
 ## Features
 
 - **Modern UI/UX**: Beautiful, responsive design with glassmorphic effects and smooth animations
 - **Wallet Integration**: Seamless MetaMask connection with real-time status updates
-- **Pension Calculator**: Advanced calculation engine with inflation and yield rate considerations
+- **Retirement Calculator**: Advanced calculation engine with inflation and yield rate considerations
 - **Interactive Dashboard**: Real-time progress tracking and payment status
 - **Dark Mode Ready**: Built with dark mode support (ready for toggle implementation)
 - **Mobile Responsive**: Optimized for all device sizes
@@ -55,7 +55,7 @@ A modern, responsive React application for the XeyaPension DeFi Pension Calculat
 src/
 ├── components/
 │   ├── ui/           # Reusable UI components
-│   ├── pension/      # Pension-related components
+│   ├── retirement/      # Retirement-related components
 │   └── wallet/       # Wallet-related components
 ├── context/          # React Context providers
 ├── hooks/            # Custom React hooks
@@ -71,13 +71,13 @@ src/
 - Error handling
 - Disconnect functionality
 
-### PensionCalculator
+### RetirementCalculator
 - Form validation
 - Real-time calculations
 - Loading states
 - Results display
 
-### PensionDashboard
+### RetirementDashboard
 - Progress tracking
 - Payment status
 - Quick actions
@@ -91,7 +91,7 @@ src/
 
 ## Features in Detail
 
-### Pension Calculation
+### Retirement Calculation
 The calculator uses advanced financial formulas to determine required investment:
 
 1. **Present Value Calculation**: Each future monthly payment is discounted to present value

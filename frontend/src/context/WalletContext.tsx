@@ -1,12 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { ethers } from 'ethers';
-import { createPensionContract, PensionContract } from '../utils/contract';
+import { createRetirementContract, RetirementContract } from '../utils/contract';
 
 interface WalletContextType {
   account: string | null;
   isConnected: boolean;
   provider: ethers.providers.Web3Provider | null;
-  contract: PensionContract | null;
+  contract: RetirementContract | null;
   connectWallet: () => Promise<void>;
   disconnectWallet: () => void;
   error: string | null;
@@ -29,7 +29,7 @@ interface WalletProviderProps {
 export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
   const [account, setAccount] = useState<string | null>(null);
   const [provider, setProvider] = useState<ethers.providers.Web3Provider | null>(null);
-  const [contract, setContract] = useState<PensionContract | null>(null);
+  const [contract, setContract] = useState<RetirementContract | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const connectWallet = async () => {
@@ -49,11 +49,11 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       const web3Provider = new ethers.providers.Web3Provider((window as any).ethereum);
       
       // Create contract instance
-      const pensionContract = createPensionContract(web3Provider);
+      const retirementContract = createRetirementContract(web3Provider);
       
       setAccount(accounts[0]);
       setProvider(web3Provider);
-      setContract(pensionContract);
+      setContract(retirementContract);
     } catch (err: any) {
       setError(err.message || 'Failed to connect wallet.');
     }
@@ -74,9 +74,9 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
           setAccount(accounts[0]);
           // Recreate provider and contract with new account
           const web3Provider = new ethers.providers.Web3Provider((window as any).ethereum);
-          const pensionContract = createPensionContract(web3Provider);
+          const retirementContract = createRetirementContract(web3Provider);
           setProvider(web3Provider);
-          setContract(pensionContract);
+          setContract(retirementContract);
         } else {
           disconnectWallet();
         }
@@ -86,12 +86,22 @@ export const WalletProvider: React.FC<WalletProviderProps> = ({ children }) => {
       (window as any).ethereum.on('chainChanged', () => {
         // Recreate provider and contract when chain changes
         const web3Provider = new ethers.providers.Web3Provider((window as any).ethereum);
-        const pensionContract = createPensionContract(web3Provider);
+        const retirementContract = createRetirementContract(web3Provider);
         setProvider(web3Provider);
-        setContract(pensionContract);
+        setContract(retirementContract);
       });
     }
   }, []);
+
+  // Always re-create contract when provider or account changes
+  useEffect(() => {
+    if (provider) {
+      const retirementContract = createRetirementContract(provider);
+      setContract(retirementContract);
+    } else {
+      setContract(null);
+    }
+  }, [provider, account]);
 
   const value = {
     account,
