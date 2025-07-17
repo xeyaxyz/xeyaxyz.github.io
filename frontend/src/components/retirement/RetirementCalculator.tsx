@@ -8,6 +8,7 @@ import EthereumPriceChart from '../ui/EthereumPriceChart';
 import WalletConnect from '../wallet/WalletConnect';
 import RetirementDashboard from './RetirementDashboard';
 import { calculateInvestmentWithNewFormula, FIXED_INFLATION_RATE } from '../../utils/calculations';
+import SolanaPriceChart from '../ui/SolanaPriceChart';
 
 // Tooltip component using a portal
 const Tooltip: React.FC<{ text: string; children: ReactNode }> = ({ text, children }) => {
@@ -653,6 +654,10 @@ const RetirementCalculator: React.FC<RetirementCalculatorProps> = ({
               <br /><br />
               <b>Solana</b> is a high-performance blockchain designed for fast, low-cost decentralized applications and crypto transactions. It uses a unique consensus mechanism combining proof-of-stake with proof-of-history, enabling it to handle thousands of transactions per second. Launched in 2020, Solana has attracted a wide range of DeFi, NFT, and gaming projects. Despite occasional network outages, its scalability and low fees make it a popular alternative to Ethereum. SOL is the native token used for staking, transaction fees, and governance.
               </p>
+              {/* Solana Price Chart */}
+              <div className="mt-8">
+                <SolanaPriceChart />
+              </div>
             </div>
           )}
           
